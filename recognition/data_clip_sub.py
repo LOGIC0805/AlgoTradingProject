@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from DataClip import Data_clip
+from .DataClip import Data_clip
 
 
 class Analysis_for_history_data(Data_clip):
@@ -46,7 +46,7 @@ class Analysis_for_history_data(Data_clip):
         forward_days = self.forward_days
         window_clips = self.window_clip3.copy()
         for j in window_clips:
-            j["forward_returns_{}".format(forward_days)] = self.prices["closeIndex"]\
+            j["forward_returns_{}".format(forward_days)] = self.prices["close"]\
                 .pct_change(forward_days).shift(-forward_days).loc[j["end"]]
         self.windows_with_forward_returns =  window_clips
     
@@ -59,7 +59,7 @@ class Analysis_for_history_data(Data_clip):
         for i in range(len(windows)-1):
             w1 = windows[i]
             w2 = windows[i+1]
-            forward_ret = self.prices.loc[w2["end"]]["closeIndex"] / self.prices.loc[w1["end"]]["closeIndex"] - 1
+            forward_ret = self.prices.loc[w2["end"]]["close"] / self.prices.loc[w1["end"]]["close"] - 1
             w1["forward_ret_random_window"] = forward_ret
             windows_with_random_return.append(w1)
         w2["forward_ret_random_window"] = np.nan
@@ -162,7 +162,7 @@ class Signal(Data_clip):
         """
         self.recent_windows = self.window_clip3[-self.t-1:-1]
     
-    @ staticmethod
+    @staticmethod
     def get_two_lists(clips):
         def zip_interleave(a, b):
             result = []
@@ -184,31 +184,14 @@ class Signal(Data_clip):
     def get_Slist(self):
         clips = self.recent_windows.copy()
         p, v = self.get_two_lists(clips)
-        shape_list = ((p, v), clips[-1])
-        return shape_list
-    
-    @ staticmethod
-    def compare_two_shapes(s1, s2, gamma):
-        """
-        比较两个形状
-        gamma: 阈值
-        """
-        def calculate_d_scores(v1, v2):
-            """
-            计算D值
-            """
-            return 1/(len(v1)-1)  * abs((abs(pd.Series(v1).diff()) - abs(pd.Series(v2).diff()))).sum()
-
-        if s1[0][0] != s2[0][0]:
-            return False
+        if clips:  # Check if the list is not empty
+            shape_list = ((p, v), clips[-1])
+            return shape_list
         else:
-            d = calculate_d_scores(s1[0][1],s2[0][1])
-            if d <= gamma:
-                return True
-            else:
-                return False
+            # Handle the case where the list is empty
+            return None  # or any other appropriate action
 
-    @ staticmethod
+    @staticmethod
     def calculate_stats(numbers):
         """_summary_
         计算收益均值、胜率、盈亏比
@@ -251,17 +234,20 @@ class Signal(Data_clip):
         similar_signals = []
         forward_rets = []
         forward_random_rets = []
-        for h in history_data:
-            if self.compare_two_shapes(h, self.get_Slist(), gamma):
-                similar_signals.append(h)
-        
-        if len(similar_signals) < num:
-            return False
+        if self.get_Slist() is not None:
+            for h in history_data:
+                if self.compare_two_shapes(h, self.get_Slist(), gamma):
+                    similar_signals.append(h)
+            
+            if len(similar_signals) < num:
+                return False
+            else:
+                for datas in similar_signals:
+                    forward_rets.append(datas[1][list(datas[1].keys())[-2]])
+                    forward_random_rets.append(datas[1][list(datas[1].keys())[-1]])
+                return self.calculate_stats(forward_rets), self.calculate_stats(forward_random_rets)
         else:
-            for datas in similar_signals:
-                forward_rets.append(datas[1][list(datas[1].keys())[-2]])
-                forward_random_rets.append(datas[1][list(datas[1].keys())[-1]])
-            return self.calculate_stats(forward_rets), self.calculate_stats(forward_random_rets)
+            return False
     
     def generate_signals(self, history_data, gamma, num, type_="int"):
         """_summary_
@@ -284,15 +270,35 @@ class Signal(Data_clip):
         """
         similar_signals = self.get_similar_signals_in_history(history_data, gamma, num)
         if similar_signals == False:
-            return self.prices.iloc[-1]["tradeDate"], 0, 0
+            return self.prices.iloc[-1]["date"], 0, 0
         else:
             if type_ == "int":
                 if (similar_signals[0][0] >0) and (similar_signals[0][1]>0.3) and (similar_signals[0][2]) > 1.5:
-                    return self.prices.iloc[-1]["tradeDate"], 1, 5
+                    return self.prices.iloc[-1]["date"], 1, 5
                 else:
-                    return self.prices.iloc[-1]["tradeDate"], 0, 0
+                    return self.prices.iloc[-1]["date"], 0, 0
             else:
                 if (similar_signals[1][0] >0) and (similar_signals[1][1]>0.3) and (similar_signals[1][2]) > 1.5:
-                    return self.prices.iloc[-1]["tradeDate"], 1, 100
+                    return self.prices.iloc[-1]["date"], 1, 100
                 else:
-                    return self.prices.iloc[-1]["tradeDate"], 0, 100
+                    return self.prices.iloc[-1]["date"], 0, 100
+
+    def calculate_d_scores(self, v1, v2):
+        """
+        计算D值
+        """
+        return 1/(len(v1)-1) * abs((abs(pd.Series(v1).diff()) - abs(pd.Series(v2).diff()))).sum()
+
+    def compare_two_shapes(self, s1, s2, gamma):
+        """
+        比较两个形状
+        gamma: 阈值
+        """
+        if s1[0][0] != s2[0][0]:
+            return False
+        else:
+            d = self.calculate_d_scores(s1[0][1], s2[0][1])
+            if d <= gamma:
+                return True
+            else:
+                return False
