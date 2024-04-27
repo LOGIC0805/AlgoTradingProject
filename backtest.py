@@ -36,7 +36,7 @@ for j in range(100, len(test_data)):
     signal_data.get_recent_windows()
     signal_list.append(signal_data.generate_signals(history_data, 0.5, 5))
 temp_test = pd.DataFrame(signal_list).set_index(0)[1]
-sigs = temp_test[(temp_test!=temp_test.shift(1)) &(temp_test==1)].reindex(temp_test.index).fillna(method="ffill", limit=4).fillna(0)
+sigs = temp_test[(temp_test!=temp_test.shift(1)) &(temp_test==1)].reindex(temp_test.index).fillna(method="ffill", limit=4).fillna(0).shift(1)
 prices = test_data.set_index("date")["open"].loc[sigs.index]
 print("end")
 
